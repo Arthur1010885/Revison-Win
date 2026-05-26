@@ -132,7 +132,7 @@ function Download-File {
 
 # Função: Aplicar wallpaper
 function Set-RevisionWallpaper {
-    $wallpaperUrl = "https://raw.githubusercontent.com/Arthur1010885/Revison-Win/6512261dc728da49cff2a32a8cb6d58b22c3a0b1/e5f692c9-d719-4ed5-b926-3a9be904e844.png"
+    $wallpaperUrl = "https://github.com/Arthur1010885/Revison-Win/blob/bff8e12111f3a79e9e1b41e82af5c894577b453e/wallpaper.png"
     Download-File -url $wallpaperUrl -output $global:WallpaperPath
     
     if (Test-Path $global:WallpaperPath) {
@@ -227,7 +227,7 @@ function Main {
     New-Item -ItemType Directory -Force -Path $global:InstallPath | Out-Null
     
     # Baixar logo
-    $logoUrl = "https://raw.githubusercontent.com/Arthur1010885/Revison-Win/1c8e18652c5c90d989ac1f6278e0b303f4f60194/9d9b41cc-e8ee-4ad5-8083-26bf558fe9bf.png"
+    $logoUrl = "https://github.com/Arthur1010885/Revison-Win/blob/bff8e12111f3a79e9e1b41e82af5c894577b453e/logo.png"
     Download-File -url $logoUrl -output $global:LogoPath
     
     # Criar arquivo de logo ASCII
